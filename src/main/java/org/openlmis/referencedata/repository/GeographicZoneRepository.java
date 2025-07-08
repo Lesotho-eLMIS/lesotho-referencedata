@@ -41,6 +41,8 @@ public interface GeographicZoneRepository extends PagingAndSortingRepository<Geo
 
   <S extends GeographicZone> S findByCode(String code);
 
+  <S extends GeographicZone> List<S> findAllByCodeIn(List<String> codes);
+
   @Query(value = "SELECT gz.*"
       + " FROM referencedata.geographic_zones gz"
       + " WHERE ST_Covers(gz.boundary, :location)",
@@ -65,4 +67,7 @@ public interface GeographicZoneRepository extends PagingAndSortingRepository<Geo
       + " ",
       nativeQuery = true)
   Page<GeographicZone> findAllWithoutSnapshots(Pageable pageable);
+
+  @Query("SELECT SUM(gz.catchmentPopulation) FROM GeographicZone gz WHERE gz.parent = :parent ")
+  Integer sumCatchmentPopulationByParent(@Param("parent") GeographicZone parent);
 }

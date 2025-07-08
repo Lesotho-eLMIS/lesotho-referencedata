@@ -15,6 +15,8 @@
 
 package org.openlmis.referencedata.repository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import org.openlmis.referencedata.domain.Role;
 import org.openlmis.referencedata.repository.custom.RoleRepositoryCustom;
@@ -22,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface RoleRepository extends JpaRepository<Role, UUID>, RoleRepositoryCustom,
     BaseAuditableRepository<Role, UUID> {
@@ -46,4 +49,8 @@ public interface RoleRepository extends JpaRepository<Role, UUID>, RoleRepositor
       nativeQuery = true)
   Page<Role> findAllWithoutSnapshots(Pageable pageable);
 
+  @Query("SELECT r FROM Role r JOIN r.rights rights WHERE rights.id = :rightId")
+  List<Role> findAllByRightId(@Param("rightId") UUID rightId);
+
+  List<Role> findAllByNameIn(Collection<String> roleNames);
 }

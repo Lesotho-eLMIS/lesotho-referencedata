@@ -16,7 +16,7 @@
 package org.openlmis.referencedata.service;
 
 import java.time.LocalDate;
-import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -33,9 +33,10 @@ public class LotSearchParams {
   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
   private LocalDate expirationDate;
 
-  private List<UUID> tradeItemId;
+  private Set<UUID> tradeItemId;
+  private Set<String> exactCode;
   private String lotCode;
-  private List<UUID> id;
+  private Set<UUID> id;
 
   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
   private LocalDate expirationDateFrom;
@@ -43,6 +44,6 @@ public class LotSearchParams {
   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
   private LocalDate expirationDateTo;
 
-  private List<UUID> orderableId;
+  private Set<UUID> orderableId;
   private boolean isTradeItemIdIgnored = false;
 }

@@ -30,6 +30,8 @@ import lombok.Setter;
 import lombok.ToString;
 import org.openlmis.referencedata.domain.GeographicLevel;
 import org.openlmis.referencedata.domain.GeographicZone;
+import org.openlmis.referencedata.web.csv.model.ImportField;
+import org.openlmis.referencedata.web.csv.processor.CsvCellProcessors;
 
 @NoArgsConstructor
 @AllArgsConstructor
@@ -40,11 +42,19 @@ import org.openlmis.referencedata.domain.GeographicZone;
 @Setter
 public class GeographicZoneSimpleDto extends BaseDto implements
     GeographicZone.Exporter, GeographicZone.Importer {
+
+  @ImportField(name = "code", mandatory = true)
   private String code;
+
   private String name;
+
   private GeographicLevelDto level;
+
+  @ImportField(name = "catchmentPopulation", type = CsvCellProcessors.POSITIVE_LONG)
   private Integer catchmentPopulation;
+
   private Double latitude;
+
   private Double longitude;
 
   @JsonSerialize(as = GeographicZoneSimpleDto.class)
@@ -92,5 +102,18 @@ public class GeographicZoneSimpleDto extends BaseDto implements
   public Map<String, Object> getExtraData() {
     // unsupported operation
     return Maps.newHashMap();
+  }
+
+  /**
+   * Create new instance of GeographicZoneSimpleDto.
+   *
+   * @param geographicZone a geographicZone to create model from, not null
+   * @return new instance of GeographicZoneSimpleDto, never null
+   */
+  public static GeographicZoneSimpleDto newInstance(GeographicZone geographicZone) {
+    final GeographicZoneSimpleDto model = new GeographicZoneSimpleDto();
+    model.code = geographicZone.getCode();
+    model.catchmentPopulation = geographicZone.getCatchmentPopulation();
+    return model;
   }
 }

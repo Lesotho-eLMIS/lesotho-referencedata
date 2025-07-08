@@ -95,7 +95,7 @@ public final class OrderableDto extends BaseDto implements Orderable.Importer,
    * @param orderables list of {@link Orderable}
    * @return new list of OrderableDto.
    */
-  public static List<OrderableDto> newInstance(Iterable<Orderable> orderables) {
+  public static List<OrderableDto> newInstances(Iterable<Orderable> orderables) {
     List<OrderableDto> orderableDtos = new LinkedList<>();
     orderables.forEach(oe -> orderableDtos.add(newInstance(oe)));
     return orderableDtos;

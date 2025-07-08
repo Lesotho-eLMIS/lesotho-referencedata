@@ -15,16 +15,26 @@
 
 package org.openlmis.referencedata.service;
 
+import static java.util.stream.Collectors.toList;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.openlmis.referencedata.domain.Facility;
 import org.openlmis.referencedata.domain.Right;
 import org.openlmis.referencedata.domain.RightType;
 import org.openlmis.referencedata.domain.User;
+import org.openlmis.referencedata.dto.ImportedUserItemDto;
+import org.openlmis.referencedata.dto.UserContactDetailsDto;
+import org.openlmis.referencedata.dto.UserDto;
 import org.openlmis.referencedata.exception.ValidationMessageException;
 import org.openlmis.referencedata.repository.FacilityRepository;
 import org.openlmis.referencedata.repository.ProgramRepository;
@@ -32,6 +42,7 @@ import org.openlmis.referencedata.repository.RightRepository;
 import org.openlmis.referencedata.repository.SupervisoryNodeRepository;
 import org.openlmis.referencedata.repository.UserRepository;
 import org.openlmis.referencedata.repository.UserSearchParams;
+import org.openlmis.referencedata.service.export.ExportableDataService;
 import org.openlmis.referencedata.util.Message;
 import org.openlmis.referencedata.util.Pagination;
 import org.openlmis.referencedata.util.messagekeys.FacilityMessageKeys;
@@ -46,9 +57,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+@SuppressWarnings({"PMD.TooManyMethods"})
 @Service
-public class UserService {
+public class UserService implements ExportableDataService<UserDto> {
 
   protected static final String USERNAME = "username";
   protected static final String FIRST_NAME = "firstName";
@@ -75,7 +88,13 @@ public class UserService {
 
   @Autowired
   private SupervisoryNodeRepository supervisoryNodeRepository;
-  
+
+  @Autowired
+  private UserDetailsService userDetailsService;
+
+  @Autowired
+  private UserAuthService userAuthService;
+
   private ObjectMapper mapper = new ObjectMapper();
 
   /**
@@ -163,6 +182,107 @@ public class UserService {
     }
   }
 
+  /**
+   * Deletes users.
+   *
+   * @param userIds identifiers of users who will be deleted
+   */
+  @Transactional
+  public void deleteUsersByIds(Set<UUID> userIds) {
+    userRepository.deleteUsersByIds(userIds);
+  }
+
+  @Override
+  public List<UserDto> findAllExportableItems() {
+    List<UserDto> users = userRepository.findAll().stream()
+        .map(UserDto::newInstance).collect(toList());
+
+    List<UserContactDetailsDto.UserContactDetailsApiContract> usersContactDetails =
+        userDetailsService.getUserContactDetails().getContent();
+
+    List<UserDto.UserAuthDetailsApiContract> usersAuthDetails =
+        userAuthService.getAuthUserDetails();
+
+    mergeUsersWithContactAndAuthDetails(users, usersContactDetails, usersAuthDetails);
+
+    return users;
+  }
+
+  @Override
+  public Class<UserDto> getExportableType() {
+    return UserDto.class;
+  }
+
+  /**
+   * Persists users in database.
+   *
+   * @param usersBatch batch with users data
+   * @param facilityMap map of facilities from imported file
+   * @return list of {@link UserDto} persisted users
+   */
+  public List<ImportedUserItemDto> saveUsersFromFile(List<UserDto> usersBatch,
+                                             Map<String, Facility> facilityMap) {
+    List<ImportedUserItemDto> toPersistBatch = createListToPersist(usersBatch, facilityMap);
+
+    Map<String, Boolean> isNewUserMap = toPersistBatch.stream()
+        .collect(Collectors.toMap(
+            item -> item.getUser().getUsername(),
+            ImportedUserItemDto::isNewUser
+        ));
+
+    List<User> persistedObjects = new ArrayList<>(userRepository.saveAll(
+        toPersistBatch.stream()
+            .map(ImportedUserItemDto::getUser)
+            .collect(toList())));
+
+    return persistedObjects.stream()
+        .map(user ->
+            new ImportedUserItemDto(user, isNewUserMap.getOrDefault(user.getUsername(), false)))
+        .collect(toList());
+  }
+
+  private List<ImportedUserItemDto> createListToPersist(
+      List<UserDto> dtoList, Map<String, Facility> facilityMap) {
+    List<ImportedUserItemDto> persisList = new LinkedList<>();
+    for (UserDto userDto : dtoList) {
+      persisList.add(createOrUpdateUser(userDto, facilityMap));
+    }
+
+    return persisList;
+  }
+
+  private ImportedUserItemDto createOrUpdateUser(
+      UserDto userDto, Map<String, Facility> facilityMap) {
+    ImportedUserItemDto importedUserItemDto = new ImportedUserItemDto();
+    User user = userRepository.findOneByUsernameIgnoreCase(userDto.getUsername());
+
+    if (user == null) {
+      user = new User();
+      importedUserItemDto.setNewUser(true);
+    } else {
+      userDto.setId(user.getId());
+      importedUserItemDto.setNewUser(false);
+    }
+
+    Facility facility = facilityMap.get(userDto.getHomeFacilityCode());
+    if (facility != null) {
+      userDto.setHomeFacilityId(facility.getId());
+    }
+
+    user.updateFrom(userDto);
+    importedUserItemDto.setUser(user);
+
+    return importedUserItemDto;
+  }
+
+  private Map<String, Boolean> getNewUserStatusMap(List<User> toPersistBatch) {
+    return toPersistBatch.stream()
+        .collect(Collectors.toMap(
+            User::getUsername,
+            user -> user.getId() == null
+        ));
+  }
+
   private Set<User> searchByFulfillmentRight(Right right, UUID warehouseId) {
     if (warehouseId == null) {
       throw new ValidationMessageException(UserMessageKeys.WAREHOUSE_ID_REQUIRED);
@@ -201,4 +321,49 @@ public class UserService {
     return userRepository.findUsersBySupervisionRight(rightId, supervisoryNodeId, programId);
   }
 
+  private void mergeUsersWithContactAndAuthDetails(List<UserDto> users,
+      List<UserContactDetailsDto.UserContactDetailsApiContract> usersContactDetails,
+      List<UserDto.UserAuthDetailsApiContract> usersAuthDetails) {
+    Map<UUID, UserContactDetailsDto.UserContactDetailsApiContract> contactDetailsMap =
+        usersContactDetails.stream()
+            .collect(Collectors.toMap(
+                UserContactDetailsDto.UserContactDetailsApiContract::getReferenceDataUserId,
+                Function.identity()
+            ));
+
+    Map<UUID, UserDto.UserAuthDetailsApiContract> authDetailsMap =
+        usersAuthDetails.stream()
+            .collect(Collectors.toMap(
+                UserDto.UserAuthDetailsApiContract::getId,
+                Function.identity()
+            ));
+
+    Map<UUID, Facility> facilityMap = facilityRepository.findAllByIdIn(
+        users.stream()
+            .map(UserDto::getHomeFacilityId)
+            .filter(Objects::nonNull)
+            .collect(toList()))
+        .stream().collect(Collectors.toMap(Facility::getId, Function.identity()));
+
+    for (UserDto userDto : users) {
+      UserContactDetailsDto.UserContactDetailsApiContract contactDetails =
+          contactDetailsMap.get(userDto.getId());
+      UserDto.UserAuthDetailsApiContract authDetails = authDetailsMap.get(userDto.getId());
+      if (contactDetails != null) {
+        userDto.setUsername(authDetails.getUsername());
+        userDto.setActive(authDetails.getEnabled());
+        userDto.setPhoneNumber(contactDetails.getPhoneNumber());
+        userDto.setEmail(contactDetails.getEmailDetails().getEmail());
+        userDto.setEmailVerified(contactDetails.getEmailDetails().getEmailVerified());
+        userDto.setAllowNotify(contactDetails.getAllowNotify());
+        setHomeFacilityCode(userDto, facilityMap);
+      }
+    }
+  }
+
+  private void setHomeFacilityCode(UserDto userDto, Map<UUID, Facility> facilityMap) {
+    if (userDto.getHomeFacilityId() != null) {
+      userDto.setHomeFacilityCode(facilityMap.get(userDto.getHomeFacilityId()).getCode());
+    }
+  }
 }

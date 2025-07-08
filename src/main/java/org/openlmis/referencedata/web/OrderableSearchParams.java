@@ -15,13 +15,13 @@
 
 package org.openlmis.referencedata.web;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import static java.util.Collections.emptySet;
+import static java.util.Collections.singleton;
 
-import java.util.Collections;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-
 import lombok.AllArgsConstructor;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -58,6 +58,11 @@ public final class OrderableSearchParams
   }
 
   @Override
+  public Set<String> getExactCodes() {
+    return emptySet();
+  }
+
+  @Override
   @JsonIgnore
   String getInvalidVersionIdentityErrorMessage() {
     return OrderableMessageKeys.ERROR_INVALID_VERSION_IDENTITY;
@@ -65,6 +70,12 @@ public final class OrderableSearchParams
 
   @Override
   public Set<UUID> getTradeItemId() {
-    return Collections.emptySet();
+    return emptySet();
+  }
+
+  @Override
+  @JsonIgnore
+  public Set<String> getProgramCodes() {
+    return singleton(programCode);
   }
 }

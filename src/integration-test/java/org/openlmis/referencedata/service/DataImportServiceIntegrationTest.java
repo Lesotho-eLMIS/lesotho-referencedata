@@ -18,7 +18,11 @@ package org.openlmis.referencedata.service;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
+import com.google.common.util.concurrent.MoreExecutors;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -27,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javax.transaction.Transactional;
@@ -39,6 +44,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.contrib.java.lang.system.EnvironmentVariables;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.openlmis.referencedata.Application;
 import org.openlmis.referencedata.domain.Code;
 import org.openlmis.referencedata.domain.Dispensable;
@@ -47,25 +53,31 @@ import org.openlmis.referencedata.domain.OrderableDisplayCategory;
 import org.openlmis.referencedata.domain.Program;
 import org.openlmis.referencedata.domain.ProgramOrderable;
 import org.openlmis.referencedata.domain.TradeItem;
-import org.openlmis.referencedata.dto.BaseDto;
 import org.openlmis.referencedata.dto.DispensableDto;
+import org.openlmis.referencedata.dto.ImportResponseDto;
 import org.openlmis.referencedata.repository.OrderableDisplayCategoryRepository;
 import org.openlmis.referencedata.repository.OrderableRepository;
 import org.openlmis.referencedata.repository.ProgramOrderableRepository;
 import org.openlmis.referencedata.repository.ProgramRepository;
 import org.openlmis.referencedata.repository.TradeItemRepository;
 import org.openlmis.referencedata.service.export.DataImportService;
+import org.openlmis.referencedata.service.export.OrderableImportPersister;
+import org.openlmis.referencedata.service.export.ProgramOrderableImportPersister;
+import org.openlmis.referencedata.service.export.TradeItemImportPersister;
 import org.openlmis.referencedata.testbuilder.OrderableDataBuilder;
 import org.openlmis.referencedata.testbuilder.OrderableDisplayCategoryDataBuilder;
 import org.openlmis.referencedata.testbuilder.ProgramDataBuilder;
 import org.openlmis.referencedata.testbuilder.ProgramOrderableDataBuilder;
 import org.openlmis.referencedata.testbuilder.TradeItemDataBuilder;
+import org.openlmis.referencedata.util.TransactionUtils;
+import org.slf4j.profiler.Profiler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.util.Pair;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @RunWith(SpringRunner.class)
 @SpringBootTest(classes = {Application.class, DataImportService.class})
@@ -203,16 +215,55 @@ public class DataImportServiceIntegrationTest {
   @Autowired
   private TradeItemRepository tradeItemRepository;
 
+  @Autowired
+  private OrderableImportPersister orderableImportPersister;
+
+  @Autowired
+  private ProgramOrderableImportPersister programOrderableImportPersister;
+
+  @Autowired
+  private TradeItemImportPersister tradeItemImportPersister;
+
+  @Mock
+  private Profiler profiler;
+
+  @Mock
+  private TransactionUtils transactionUtils;
+
   @Before
   public void setUp() {
     environmentVariables.set("CURRENCY_CODE", "USD");
     persistedProgram = createAndPersistProgram(PROGRAM_CODE);
     persistedOrderableDisplayCategory =
         createAndPersistOrderableDisplayCategory(ORDERABLE_DISPLAY_CATEGORY);
+
+    when(profiler.startNested(anyString())).thenReturn(profiler);
+    when(transactionUtils.runInOwnTransaction(any(Supplier.class)))
+        .thenAnswer(invocation -> ((Supplier) invocation.getArgument(0)).get());
+
+    ReflectionTestUtils.setField(
+        orderableImportPersister,
+        "importExecutorService",
+        MoreExecutors.newDirectExecutorService());
+    ReflectionTestUtils.setField(
+        programOrderableImportPersister,
+        "importExecutorService",
+        MoreExecutors.newDirectExecutorService());
+    ReflectionTestUtils.setField(
+        tradeItemImportPersister,
+        "importExecutorService",
+        MoreExecutors.newDirectExecutorService());
+
+    ReflectionTestUtils.setField(
+        orderableImportPersister, "transactionUtils", transactionUtils);
+    ReflectionTestUtils.setField(
+        programOrderableImportPersister, "transactionUtils", transactionUtils);
+    ReflectionTestUtils.setField(
+        tradeItemImportPersister, "transactionUtils", transactionUtils);
   }
 
   @Test
-  public void shouldImportOrderablesFromValidCsvFile() throws IOException {
+  public void shouldImportOrderablesFromValidCsvFile() throws IOException, InterruptedException {
     // given
     createAndPersistOrderable(ORDERABLE_CODE_1, TEST_NAME,
         TEST_DISPENSABLE);
@@ -221,11 +272,13 @@ public class DataImportServiceIntegrationTest {
         ORDERABLE_CORRECT_HEADERS, ORDERABLES_FILE);
 
     // when
-    List<BaseDto> result = dataImportService.importData(multipartFile);
+    List<ImportResponseDto.ImportDetails> result =
+        dataImportService.importData(multipartFile, profiler);
 
     // then check if result is present
     assertNotNull(result);
-    assertEquals(ORDERABLE_CORRECT_RECORDS.size(), result.size());
+    assertEquals((Integer) ORDERABLE_CORRECT_RECORDS.size(),
+        result.get(0).getSuccessfulEntriesCount());
 
     // then fetch imported objects
     Orderable importedOrderable1 = orderableRepository
@@ -249,7 +302,8 @@ public class DataImportServiceIntegrationTest {
   }
 
   @Test
-  public void shouldImportProgramOrderablesFromValidCsvFile() throws IOException {
+  public void shouldImportProgramOrderablesFromValidCsvFile()
+      throws IOException, InterruptedException {
     // given
     Orderable persistedOrderable = createAndPersistOrderable(
         ORDERABLE_CODE_1, TEST_NAME, TEST_DISPENSABLE);
@@ -262,11 +316,13 @@ public class DataImportServiceIntegrationTest {
         PROGRAM_ORDERABLE_CORRECT_HEADERS, PROGRAM_ORDERABLES_FILE);
 
     // when
-    List<BaseDto> result = dataImportService.importData(multipartFile);
+    List<ImportResponseDto.ImportDetails> result =
+        dataImportService.importData(multipartFile, profiler);
 
     // then check if result is present
     assertNotNull(result);
-    assertEquals(PROGRAM_ORDERABLE_CORRECT_RECORDS.size(), result.size());
+    assertEquals((Integer) PROGRAM_ORDERABLE_CORRECT_RECORDS.size(),
+        result.get(0).getSuccessfulEntriesCount());
 
     // then fetch imported objects
     ProgramOrderable importedProgramOrderable1 = programOrderableRepository
@@ -290,7 +346,7 @@ public class DataImportServiceIntegrationTest {
   }
 
   @Test
-  public void shouldImportTradeItemFromValidCsvFile() throws IOException {
+  public void shouldImportTradeItemFromValidCsvFile() throws IOException, InterruptedException {
     // given
     final TradeItem persistedTradeItem1 = createAndPersistTradeItem(TEST_MANUFACTURER);
     final TradeItem persistedTradeItem2 = createAndPersistTradeItem(TEST_MANUFACTURER);
@@ -310,11 +366,13 @@ public class DataImportServiceIntegrationTest {
         TRADE_ITEM_CORRECT_HEADERS, TRADE_ITEM_FILE);
 
     // when
-    List<BaseDto> result = dataImportService.importData(multipartFile);
+    List<ImportResponseDto.ImportDetails> result =
+        dataImportService.importData(multipartFile, profiler);
 
     // then check if result is present
     assertNotNull(result);
-    assertEquals(ORDERABLE_CORRECT_RECORDS.size(), result.size());
+    assertEquals((Integer) ORDERABLE_CORRECT_RECORDS.size(),
+        result.get(0).getSuccessfulEntriesCount());
 
     // then fetch imported objects
     final Orderable importedOrderable1 = orderableRepository
@@ -421,7 +479,7 @@ public class DataImportServiceIntegrationTest {
   private ProgramOrderable createAndPersistProgramOrderable(
       Program program, Orderable orderable, OrderableDisplayCategory orderableDisplayCategory) {
     ProgramOrderable programOrderable = new ProgramOrderableDataBuilder()
-          .withProgram(program).withProduct(orderable).withOrderabeDisplayCategory(
+        .withProgram(program).withProduct(orderable).withOrderableDisplayCategory(
               orderableDisplayCategory).buildAsNew();
     programOrderableRepository.saveAndFlush(programOrderable);
     return programOrderable;

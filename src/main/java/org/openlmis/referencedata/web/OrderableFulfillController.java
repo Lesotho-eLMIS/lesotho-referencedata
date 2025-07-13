@@ -17,29 +17,10 @@ package org.openlmis.referencedata.web;
 
 import static org.openlmis.referencedata.web.OrderableFulfillController.RESOURCE_PATH;
 
-import com.google.common.collect.Maps;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import org.openlmis.referencedata.domain.CommodityType;
-import org.openlmis.referencedata.domain.FacilityTypeApprovedProduct;
-import org.openlmis.referencedata.domain.Orderable;
-import org.openlmis.referencedata.domain.TradeItem;
-import org.openlmis.referencedata.repository.CommodityTypeRepository;
-import org.openlmis.referencedata.repository.FacilityTypeApprovedProductRepository;
-import org.openlmis.referencedata.repository.OrderableRepository;
-import org.openlmis.referencedata.repository.TradeItemRepository;
-import org.openlmis.referencedata.util.EntityCollection;
-import org.openlmis.referencedata.util.Pagination;
-import org.slf4j.ext.XLogger;
-import org.slf4j.ext.XLoggerFactory;
-import org.slf4j.profiler.Profiler;
+import org.openlmis.referencedata.service.OrderableFulfillService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.MultiValueMap;
@@ -54,88 +35,33 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(RESOURCE_PATH)
 public class OrderableFulfillController extends BaseController {
 
-  private static final XLogger XLOGGER = XLoggerFactory
-          .getXLogger(OrderableFulfillController.class);
 
   public static final String RESOURCE_PATH = API_PATH + "/orderableFulfills";
 
-  @Autowired
-  private OrderableRepository orderableRepository;
+  /**
+   * The OrderableFulfillService is used to retrieve orderable fulfills based on search parameters.
+   */
+  // This service encapsulates the logic for fetching and processing orderable fulfills.
+  // It interacts with repositories to fetch data and applies business logic to create the
+  // appropriate response objects.
 
   @Autowired
-  private OrderableFulfillFactory orderableFulfillFactory;
-
-  @Autowired
-  private TradeItemRepository tradeItemRepository;
-
-  @Autowired
-  private CommodityTypeRepository commodityTypeRepository;
-
-  @Autowired
-  private FacilityTypeApprovedProductRepository ftapRepository;
-
-  private PageRequest noPaginationRequest = PageRequest.of(Pagination.DEFAULT_PAGE_NUMBER,
-      Pagination.NO_PAGINATION);
+  private OrderableFulfillService orderableFulfillService;
 
   /**
-   * Gets orderable fulfills.
+   * Retrieves a map of OrderableFulfill objects based on the provided search parameters.
+   * The keys of the map are the UUIDs of the Orderables, and the values are the corresponding
+   * OrderableFulfill objects.
+   *
+   * @param requestParams The search parameters to filter Orderables.
+   * @return A map of OrderableFulfill objects keyed by their Orderable UUIDs.
    */
   @GetMapping
   @ResponseStatus(HttpStatus.OK)
   public Map<UUID, OrderableFulfill> getOrderableFulfills(
       @RequestParam MultiValueMap<String, Object> requestParams) {
-    Profiler profiler = new Profiler("GET_ORDERABLE_FULFILLS");
-    profiler.setLogger(XLOGGER);
 
-    profiler.start("VALIDATE_PARAMS");
     OrderableFulfillSearchParams searchParams = new OrderableFulfillSearchParams(requestParams);
-
-    Set<UUID> ids = getOrderableIds(searchParams, profiler);
-
-    profiler.start("FIND_ALL_TRADE_ITEMS_AND_COMMODITY_TYPES");
-    EntityCollection<TradeItem> tradeItems = new EntityCollection<>(tradeItemRepository.findAll());
-    EntityCollection<CommodityType> commodityTypes
-        = new EntityCollection<>(commodityTypeRepository.findAll());
-
-    profiler.start("GET_ORDERABLES");
-    List<Orderable> orderables = getOrderables(ids);
-
-    profiler.start("CONVERT_TO_ORDERABLE_FULFILLS");
-    Map<UUID, OrderableFulfill> map = Maps.newHashMap();
-    orderables.forEach(orderable -> addEntry(map, orderable, tradeItems, commodityTypes));
-
-    profiler.stop().log();
-    return map;
+    return orderableFulfillService.getOrderableFulfills(searchParams);
   }
-
-  private List<Orderable> getOrderables(Set<UUID> ids) {
-    Page<Orderable> pageWithAllOrderables = ids.isEmpty()
-        ? orderableRepository.findAllLatest(noPaginationRequest)
-        : orderableRepository.findAllLatestByIds(ids, noPaginationRequest);
-    return pageWithAllOrderables.getContent();
-  }
-
-  private void addEntry(Map<UUID, OrderableFulfill> map, Orderable orderable,
-                        EntityCollection<TradeItem> tradeItems,
-                        EntityCollection<CommodityType> commodityTypes) {
-    Optional
-        .ofNullable(orderableFulfillFactory.createFor(orderable, tradeItems, commodityTypes))
-        .ifPresent(resource -> map.put(orderable.getId(), resource));
-  }
-
-  private Set<UUID> getOrderableIds(OrderableFulfillSearchParams queryMap, Profiler profiler) {
-    if (queryMap.isSearchByFacilityIdAndProgramId()) {
-      profiler.start("GET_ORDERABLES_IDS_BY_FACILITY_AND_PROGRAM");
-      return ftapRepository
-          .searchProducts(queryMap.getFacilityId(), queryMap.getProgramId(), null, null,
-              true, null, null, noPaginationRequest)
-          .getContent()
-          .stream()
-          .map(FacilityTypeApprovedProduct::getOrderableId)
-          .collect(Collectors.toSet());
-    }
-    profiler.start("GET_ORDERABLES_IDS");
-    return queryMap.getIds();
-  }
-
 }

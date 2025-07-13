@@ -25,6 +25,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.openlmis.referencedata.exception.ValidationMessageException;
@@ -112,4 +114,24 @@ public final class OrderableFulfillSearchParams {
           new Message(ERROR_IDS_CANNOT_BY_PROVIDED_TOGETHER_WITH_FACILITY_ID_AND_PROGRAM_ID));
     }
   }
+
+  /**
+   * Returns a cache key for the search parameters.
+   * If searching by facilityId and programId, the key will be in the format:
+   * "facility:{facilityId}|program:{programId}".
+   * If searching by ids, the key will be in the format:
+   * "ids:{id1},{id2},...".
+   * @return a string representing the cache key.
+   */
+  public String cacheKey() {
+    if (isSearchByFacilityIdAndProgramId()) {
+      return "facility:" + getFacilityId() + "|program:" + getProgramId();
+    } else {
+      return "ids:" + getIds().stream()
+        .sorted()
+        .map(UUID::toString)
+        .collect(Collectors.joining(","));
+    }
+  }
+
 }

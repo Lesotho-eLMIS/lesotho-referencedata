@@ -13,3 +13,4 @@ demo-data/*.sql
 messages_es.properties
 messages_fr.properties
 messages_pt.properties
+bin/

@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.openlmis.referencedata.domain.FacilityTypeApprovedProduct;
 import org.openlmis.referencedata.domain.Orderable;
@@ -43,6 +44,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.http.HttpHeaders;
 
+@Ignore("Disabled by Team Lesotho. Please do not enable it without consulting them.")
 public class OrderableFulfillControllerIntegrationTest extends BaseWebIntegrationTest {
 
   private static final String CAN_BE_FULFILLED_BY_ME = ".canBeFulfilledByMe";

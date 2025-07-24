@@ -35,6 +35,9 @@ import org.openlmis.referencedata.util.Pagination;
 import org.openlmis.referencedata.web.OrderableFulfill;
 import org.openlmis.referencedata.web.OrderableFulfillFactory;
 import org.openlmis.referencedata.web.OrderableFulfillSearchParams;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.profiler.Profiler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -62,6 +65,8 @@ public class OrderableFulfillService {
   @Autowired
   private OrderableFulfillFactory orderableFulfillFactory;
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(OrderableFulfillService.class);
+
   /**
     * Retrieves a map of OrderableFulfill objects based on the provided search parameters.
     * The keys of the map are the UUIDs of the Orderables, and the values are the corresponding
@@ -74,16 +79,20 @@ public class OrderableFulfillService {
   public Map<UUID, OrderableFulfill> getOrderableFulfills(OrderableFulfillSearchParams searchParams) {
     Set<UUID> ids = getOrderableIds(searchParams);
 
+    Profiler profiler = new Profiler("ORDERABLE_FULFILL_SERVICE_GET_ORDERABLE_FULFILLS");
+    profiler.setLogger(LOGGER);
+    profiler.start("FETCH_ALL_TRADE_ITEMS_AND_COMMODITY_TYPES");
     EntityCollection<TradeItem> tradeItems = new EntityCollection<>(tradeItemRepository.findAll());
     EntityCollection<CommodityType> commodityTypes = new EntityCollection<>(commodityTypeRepository.findAll());
-
+    profiler.start("FETCH_ALL_ORDERABLES");
     List<Orderable> orderables = getOrderables(ids);
+    profiler.start("CREATE_ORDERABLE_FULFILLS");
     Map<UUID, OrderableFulfill> map = Maps.newHashMap();
     orderables.forEach(orderable -> {
       Optional.ofNullable(orderableFulfillFactory.createFor(orderable, tradeItems, commodityTypes))
           .ifPresent(fulfill -> map.put(orderable.getId(), fulfill));
     });
-
+    profiler.stop().log();
     return map;
   }
 

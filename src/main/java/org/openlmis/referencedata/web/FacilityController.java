@@ -347,6 +347,49 @@ public class FacilityController extends BaseController {
   }
 
   /**
+   * Searches for approved products based on the given request parameters.
+   * 
+   * 
+   * @param facilityId ID of the facility
+   * @param request    request containing search parameters
+   * @param pageable   pagination information
+   * @return a page of approved products matching the search criteria
+   */
+  @RequestMapping(
+      value = RESOURCE_PATH + "/{id}/approvedProducts/search",
+      method = RequestMethod.POST)
+  @ResponseStatus(HttpStatus.OK)
+  @ResponseBody
+  public Page<ApprovedProductDto> searchApprovedProducts(
+        @PathVariable("id") UUID facilityId,
+        @RequestBody ApprovedProductsRequest request,
+        @PageableDefault(size = Integer.MAX_VALUE) Pageable pageable) {
+
+    Profiler profiler = new Profiler("POST_SEARCH_APPROVED_PRODUCTS");
+    profiler.setLogger(XLOGGER);
+
+    profiler.start("FIND_APPROVED_PRODUCTS");
+    Page<FacilityTypeApprovedProduct> products =
+        facilityTypeApprovedProductRepository.searchProducts(
+            facilityId,
+            request.getProgramId(),
+            request.getFullSupply(),
+            request.getOrderableId(),
+            request.getActive(),
+            request.getOrderableCode(),
+            request.getOrderableName(),
+            pageable
+        );
+
+    Page<ApprovedProductDto> list =
+        toDto(products, pageable, profiler.startNested("EXPORT_PRODUCTS_TO_DTO"));
+
+    profiler.stop().log();
+    return list;
+  }
+
+
+  /**
    * Retrieves all facilities within a boundary.
    *
    * @param boundary GeoJSON polygon specifying a boundary

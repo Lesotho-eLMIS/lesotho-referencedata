@@ -37,13 +37,14 @@ import org.springframework.util.MultiValueMap;
 public class QueryOrderableSearchParams implements OrderableRepositoryCustom.SearchParams {
 
   private static final String CODE = "code";
+  private static final String EXACT_CODE = "exactCode";
   private static final String NAME = "name";
   private static final String PROGRAM_CODE = "program";
   private static final String TRADE_ITEM_ID = "tradeItemId";
   private static final String ID = "id";
 
   private static final List<String> ALL_PARAMETERS = Collections.unmodifiableList(Arrays.asList(
-      ID, CODE, NAME, PROGRAM_CODE, TRADE_ITEM_ID));
+      ID, EXACT_CODE, CODE, NAME, PROGRAM_CODE, TRADE_ITEM_ID));
 
   private final SearchParams queryParams;
 
@@ -57,10 +58,24 @@ public class QueryOrderableSearchParams implements OrderableRepositoryCustom.Sea
   }
 
   /**
+   * Gets exact orderables codes. Specifies a list of exact orderables codes to filter upon. This
+   * condition precedes `code` condition.
+   *
+   * @return String value of code or null if params doesn't contain "code" param. Empty string for
+   *     null request param value.
+   * @see #getCode()
+   */
+  @Override
+  public Set<String> getExactCodes() {
+    return queryParams.getStrings(EXACT_CODE);
+  }
+
+  /**
    * Gets code.
    *
    * @return String value of code or null if params doesn't contain "code" param. Empty string
    *         for null request param value.
+   * @see #getExactCodes()
    */
   @Override
   public String getCode() {
@@ -87,18 +102,15 @@ public class QueryOrderableSearchParams implements OrderableRepositoryCustom.Sea
   }
 
   /**
-   * Gets program code.
+   * Gets program codes.
    *
-   * @return {@link Code} value of program code or null if params doesn't contain "programCode"
-   *                      param. Empty Code for request param that has no value.
+   * @return {@link Code} values of program codes or empty collection if params doesn't contain
+   *         "programCodes" param. No program code is included if a program code
+   *         in request param is blank.
    */
   @Override
-  public String getProgramCode() {
-    if (!queryParams.containsKey(PROGRAM_CODE)) {
-      return null;
-    }
-
-    return defaultIfBlank(queryParams.getFirst(PROGRAM_CODE), EMPTY);
+  public Set<String> getProgramCodes() {
+    return queryParams.getStrings(PROGRAM_CODE);
   }
 
   @Override

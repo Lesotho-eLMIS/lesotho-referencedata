@@ -16,33 +16,46 @@
 package org.openlmis.referencedata.service;
 
 import com.google.common.collect.Sets;
+
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
+
 import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.openlmis.referencedata.domain.GeographicLevel;
 import org.openlmis.referencedata.domain.GeographicZone;
+import org.openlmis.referencedata.dto.GeographicZoneSimpleDto;
+import org.openlmis.referencedata.exception.NotFoundException;
 import org.openlmis.referencedata.exception.ValidationMessageException;
 import org.openlmis.referencedata.repository.GeographicLevelRepository;
 import org.openlmis.referencedata.repository.GeographicZoneRepository;
+import org.openlmis.referencedata.service.export.ExportableDataService;
 import org.openlmis.referencedata.util.Message;
 import org.openlmis.referencedata.util.UuidUtil;
 import org.openlmis.referencedata.util.messagekeys.GeographicLevelMessageKeys;
 import org.openlmis.referencedata.util.messagekeys.GeographicZoneMessageKeys;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 @Service
-public class GeographicZoneService {
+public class GeographicZoneService implements
+        ExportableDataService<GeographicZoneSimpleDto> {
 
   static final String NAME = "name";
   static final String CODE = "code";
   static final String PARENT = "parent";
   static final String LEVEL_NUMBER = "levelNumber";
+
+  @Value("${referencedata.catchmentPopulationAutoCalc.enabled}")
+  private boolean catchmentPopulationAutoCalc;
 
   @Autowired
   private GeographicZoneRepository geographicZoneRepository;
@@ -124,5 +137,27 @@ public class GeographicZoneService {
       }
     }
     return level;
+  }
+
+  @Override
+  public List<GeographicZoneSimpleDto> findAllExportableItems() {
+    if (!catchmentPopulationAutoCalc) {
+      return StreamSupport.stream(geographicZoneRepository.findAll().spliterator(), false)
+          .map(GeographicZoneSimpleDto::newInstance)
+          .collect(Collectors.toList());
+    }
+
+    GeographicLevel geographicLevel = geographicLevelRepository
+        .findFirstByOrderByLevelNumberDesc()
+        .orElseThrow(() -> new NotFoundException(GeographicLevelMessageKeys.ERROR_NOT_FOUND));
+
+    return geographicZoneRepository.findByLevel(geographicLevel).stream()
+        .map(GeographicZoneSimpleDto::newInstance)
+        .collect(Collectors.toList());
+  }
+
+  @Override
+  public Class<GeographicZoneSimpleDto> getExportableType() {
+    return GeographicZoneSimpleDto.class;
   }
 }

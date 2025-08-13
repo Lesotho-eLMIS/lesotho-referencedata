@@ -17,13 +17,17 @@ package org.openlmis.referencedata.service.export;
 
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
 import org.openlmis.referencedata.dto.BaseDto;
+import org.openlmis.referencedata.dto.ImportResponseDto;
 import org.openlmis.referencedata.exception.ValidationMessageException;
 import org.openlmis.referencedata.util.FileHelper;
 import org.openlmis.referencedata.util.Message;
 import org.openlmis.referencedata.util.messagekeys.CsvUploadMessageKeys;
+import org.slf4j.profiler.Profiler;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,37 +37,60 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class DataImportService {
+  private static final List<String> IMPORT_ORDER =
+      Arrays.asList(
+          FacilityImportPersister.FACILITY_FILE_NAME,
+          SupportedProgramImportPersister.SUPPORTED_PROGRAM_FILE_NAME,
+          OrderableImportPersister.ORDERABLE_FILE_NAME,
+          ProgramOrderableImportPersister.PROGRAM_ORDERABLE_FILE_NAME,
+          TradeItemImportPersister.TRADE_ITEM_FILE_NAME,
+          GeographicZonesImportPersister.GEOGRAPHIC_ZONE_FILE_NAME,
+          UserImportPersister.USER_FILE_NAME,
+          RoleAssignmentPersister.ROLE_ASSIGNMENT_FILE
+      );
 
-  @Autowired
-  private FileHelper fileHelper;
-
-  @Autowired
-  private BeanFactory beanFactory;
+  @Autowired private FileHelper fileHelper;
+  @Autowired private BeanFactory beanFactory;
 
   /**
    * Imports the data from a ZIP with CSV files.
    *
    * @param zipFile ZIP archive being imported.
+   * @throws InterruptedException when it was interrupted
    */
   @Transactional
-  public List<BaseDto> importData(MultipartFile zipFile) {
+  public List<ImportResponseDto.ImportDetails> importData(MultipartFile zipFile, Profiler profiler)
+      throws InterruptedException {
+    profiler.start("VALIDATE_ZIP_FILE");
     fileHelper.validateMultipartFile(zipFile);
-    Map<String, InputStream> fileMap = fileHelper.convertMultipartFileToZipFileMap(zipFile);
 
-    List<BaseDto> result = new ArrayList<>();
-    for (Map.Entry<String, InputStream> entry: fileMap.entrySet()) {
+    profiler.start("CONVERT_TO_ZIP_FILE_MAP");
+    final Map<String, InputStream> fileMap = fileHelper.convertMultipartFileToZipFileMap(zipFile);
+
+    profiler.start("VALIDATE_CSV_FILES");
+    for (String fileName : fileMap.keySet()) {
+      fileHelper.validateCsvFile(fileName, IMPORT_ORDER);
+    }
+
+    final List<ImportResponseDto.ImportDetails> result = new ArrayList<>();
+    for (String importFileName : IMPORT_ORDER) {
+      final InputStream fileStream = fileMap.get(importFileName);
+
+      if (fileStream == null) {
+        continue;
+      }
+
       try {
-        fileHelper.validateCsvFile(entry.getKey());
-        DataImportPersister<?, ?, ? extends BaseDto> persister =
-                beanFactory.getBean(entry.getKey(), DataImportPersister.class);
-        result.addAll(persister.processAndPersist(entry.getValue()));
+        final Profiler entryProfiler = profiler.startNested("IMPORT_ZIP_ENTRY: " + importFileName);
+        final DataImportPersister<?, ?, ? extends BaseDto> persister =
+            beanFactory.getBean(importFileName, DataImportPersister.class);
+        result.add(persister.processAndPersist(fileStream, entryProfiler));
       } catch (NoSuchBeanDefinitionException e) {
-        throw new ValidationMessageException(e, new Message(
-                CsvUploadMessageKeys.ERROR_FILE_NAME_INVALID, entry.getKey()));
+        throw new ValidationMessageException(
+            e, new Message(CsvUploadMessageKeys.ERROR_FILE_NAME_INVALID, importFileName));
       }
     }
 
     return result;
   }
-
 }

@@ -1,3 +1,71 @@
+Upcoming Version (WIP)
+==================
+
+
+15.3.1 / 2025-05-16
+==================
+
+New Functionality:
+* [OLMIS-8125](https://openlmis.atlassian.net/browse/OLMIS-8125): Added user roles import/export functionalities.
+
+15.3.0 / 2025-03-31
+==================
+
+Improvements:
+* [OE-86](https://openlmis.atlassian.net/browse/OE-86): GET `/facilities/{id}/approvedProducts` now supports multiple `programId` query parameters.
+* [OE-86](https://openlmis.atlassian.net/browse/OE-86): GET `/programs` now includes a repeatable `code` query parameter.
+* [OE-87](https://openlmis.atlassian.net/browse/OE-87): GET `/orderables` and GET `/lots` now support a repeatable `exectCode` query parameter to filter by exact codes (opposed to `code` parameter, which filters using a contains condition).
+* [OLMIS-8061](https://openlmis.atlassian.net/browse/OLMIS-8061): Automated the unassignment of rights from roles when a right is deleted.
+* [OLMIS-8099](https://openlmis.atlassian.net/browse/OLMIS-8099): Deleted unused report rights and introduced new Superset report rights.
+* Minor coverage updates and code analysis improvements.
+
+Bux Fixes
+* [OLMIS-8068](https://openlmis.atlassian.net/browse/OLMIS-8068): Fixed a Null Pointer Exception (NPE) when adding programs to products.
+
+New Functionality:
+* [OLMIS-8072](https://openlmis.atlassian.net/browse/OLMIS-8072): Added the ability to export geographic zone codes along with their catchment population.
+* [OLMIS-8065](https://openlmis.atlassian.net/browse/OLMIS-8065): Extended import/export functionalities to include user import/export.
+
+15.2.9 / 2025-01-14
+==================
+
+Changes:
+* [SELV3-752](https://openlmis.atlassian.net/browse/SELV3-752): Add `GENERAL_ADMIN` rights for managing dashboard reports and report categories
+  * `REPORTS_MANAGE`
+  * `REPORT_CATEGORIES_MANAGE`
+
+15.2.8 / 2024-12-17
+==================
+
+Improvements:
+* [SELV3-781](https://openlmis.atlassian.net/browse/SELV3-781): Extension of catchment population logic.
+  * Feature Flag Implementation:
+    * Implement a feature flag (CATCHMENT_POPULATION_CALC_AUTO) to control the aggregation and editing behavior of catchment population data.
+  * Automatic Aggregation Logic:
+    * If the feature flag is enabled (CATCHMENT_POPULATION_CALC_AUTO=true), automatically aggregate population data from the lowest geographic level to higher levels.
+    * If the feature flag is disabled (CATCHMENT_POPULATION_CALC_AUTO=false), prevent automatic aggregation and allow editing of population data at higher levels.
+  * Import Logic:
+    * Implement logic to support CSV import of population data for geographic zones.
+  * Fix /geographicZone/search endpoint so it’s parameters are optional.
+    * `GET /geographicZone/search?parent=UUID` is now possible.
+
+15.2.7 / 2024-10-31
+==================
+
+Improvements:
+* [OLMIS-7989](https://openlmis.atlassian.net/browse/OLMIS-7989): Extension of import functionality by adding possibility to import 
+facilities and supported programs.
+  * Improved performance. 
+  * Improved csv files validation
+* [OLMIS-7895](https://openlmis.atlassian.net/browse/OLMIS-7895): Add demo data for BUQ and TB Monthly
+* [OLMIS-7988](https://openlmis.atlassian.net/browse/OLMIS-7988): Add DHIS2 integration rights
+* [OLMIS-7953](https://openlmis.atlassian.net/browse/OLMIS-7953): Improve some API calls performance
+* [OIS-14](https://openlmis.atlassian.net/browse/OIS-14): Upgrade Transifex API version
+* [OIS-48](https://openlmis.atlassian.net/browse/OIS-48): Update service base images to versions without known vulnerabilities
+* [MW-1367](https://openlmis.atlassian.net/browse/MW-1367): Add active flag to MinimalFacilityDto
+* [AO-802](https://openlmis.atlassian.net/browse/AO-802): Add endpoint `GET api/orderables/{product_id}` to retrieve
+the history of price changes
+
 15.2.6 / 2023-11-07
 ==================
 

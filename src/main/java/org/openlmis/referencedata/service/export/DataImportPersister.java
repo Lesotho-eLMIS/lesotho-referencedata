@@ -16,10 +16,12 @@
 package org.openlmis.referencedata.service.export;
 
 import java.io.InputStream;
-import java.util.List;
+
+import org.openlmis.referencedata.dto.ImportResponseDto;
+import org.slf4j.profiler.Profiler;
 
 /**
- * This interface handle importing data from files to database.
+ * This interface handles importing data from files to database.
  *
  * @param <E> The entity type being imported.
  * @param <D> The DTO type containing parsed data.
@@ -27,8 +29,6 @@ import java.util.List;
  */
 public interface DataImportPersister<E, D, U> {
 
-  List<U> processAndPersist(InputStream dataStream);
-
-  List<E> createOrUpdate(List<D> dtoList);
-
+  ImportResponseDto.ImportDetails processAndPersist(
+      InputStream dataStream, Profiler profiler) throws InterruptedException;
 }

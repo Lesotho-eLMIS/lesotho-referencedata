@@ -18,8 +18,13 @@ package org.openlmis.referencedata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.internal.bind.TypeAdapters;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.PostConstruct;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.callback.Callback;
@@ -55,6 +60,7 @@ import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -62,6 +68,7 @@ import org.springframework.data.redis.connection.jedis.JedisClientConfiguration;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -260,12 +267,58 @@ public class Application {
   /**
    * Creates RedisCacheManager instance.
    */
+  // @Bean
+  // public RedisCacheManager cacheManager(RedisProperties properties) {
+  //   return RedisCacheManager.builder(connectionFactory(properties))
+  //       .transactionAware()
+  //       .build();
+  // }
+
+  /**
+   * Creates RedisCacheManager instance.
+   */
+  // @Bean
+  // public RedisCacheManager cacheManager(RedisProperties properties, ObjectMapper objectMapper) {
+  //   Jackson2JsonRedisSerializer<Object> jacksonSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
+  //   jacksonSerializer.setObjectMapper(objectMapper);
+
+  //   RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+  //       .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jacksonSerializer))
+  //       .entryTtl(Duration.ofMinutes(10));
+
+  //   return RedisCacheManager.builder(connectionFactory(properties))
+  //       .cacheDefaults(config)
+  //       .transactionAware()
+  //       .build();
+  // }
+
+  /**
+   * Creates RedisCacheManager instance.
+   */
   @Bean
-  public RedisCacheManager cacheManager(RedisProperties properties) {
+  public RedisCacheManager cacheManager(RedisProperties properties, ObjectMapper globalMapper) {
+    // Clone ObjectMapper to avoid polluting global one
+    ObjectMapper redisMapper = globalMapper.copy();
+    redisMapper.activateDefaultTyping(
+        redisMapper.getPolymorphicTypeValidator(),
+        ObjectMapper.DefaultTyping.NON_FINAL
+    );
+
+    Jackson2JsonRedisSerializer<Object> jacksonSerializer = new Jackson2JsonRedisSerializer<>(Object.class);
+    jacksonSerializer.setObjectMapper(redisMapper);
+
+    RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+        .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jacksonSerializer))
+        .entryTtl(Duration.ofMinutes(10));
+
     return RedisCacheManager.builder(connectionFactory(properties))
+        .cacheDefaults(config)
         .transactionAware()
         .build();
   }
+
+
+
 
   @Bean
   public FeatureProvider featureProvider() {
@@ -278,6 +331,11 @@ public class Application {
         .keyPrefix("togglz:")
         .jedisPool(new JedisPool(properties.getHost(), properties.getPort()))
         .build();
+  }
+
+  @Bean("importExecutorService")
+  ExecutorService getImportExecutorService() {
+    return new ThreadPoolExecutor(1, 8, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
   }
 
   /**

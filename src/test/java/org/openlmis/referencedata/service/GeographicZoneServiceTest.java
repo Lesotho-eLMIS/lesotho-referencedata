@@ -17,6 +17,7 @@ package org.openlmis.referencedata.service;
 
 import static org.hamcrest.Matchers.hasItems;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThat;
 import static org.mockito.Matchers.any;
@@ -30,12 +31,15 @@ import static org.openlmis.referencedata.service.GeographicZoneService.PARENT;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+
+import org.hamcrest.core.Every;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -45,6 +49,8 @@ import org.mockito.MockitoAnnotations;
 import org.mockito.runners.MockitoJUnitRunner;
 import org.openlmis.referencedata.domain.GeographicLevel;
 import org.openlmis.referencedata.domain.GeographicZone;
+import org.openlmis.referencedata.dto.GeographicZoneSimpleDto;
+import org.openlmis.referencedata.exception.NotFoundException;
 import org.openlmis.referencedata.exception.ValidationMessageException;
 import org.openlmis.referencedata.repository.GeographicLevelRepository;
 import org.openlmis.referencedata.repository.GeographicZoneRepository;
@@ -52,6 +58,7 @@ import org.openlmis.referencedata.util.Pagination;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @RunWith(MockitoJUnitRunner.class)
 @SuppressWarnings("PMD.TooManyMethods")
@@ -182,4 +189,60 @@ public class GeographicZoneServiceTest {
     assertThat(actual, hasSize(expected.length));
     assertThat(actual, hasItems(expected));
   }
+
+  @Test
+  public void shouldReturnGeographicZonesForHighestLevel() {
+    setCatchmentPopulationAutoCalc(true);
+    final int expectedListSize = geographicZones.size();
+
+    when(geographicLevelRepository.findFirstByOrderByLevelNumberDesc())
+        .thenReturn(Optional.of(level));
+    when(geographicZoneRepository.findByLevel(level))
+        .thenReturn(geographicZones);
+
+    List<GeographicZoneSimpleDto> result = geographicZoneService.findAllExportableItems();
+
+    assertEquals(expectedListSize, result.size());
+    verify(geographicLevelRepository).findFirstByOrderByLevelNumberDesc();
+    verify(geographicZoneRepository).findByLevel(eq(level));
+  }
+
+  @Test
+  public void shouldReturnAllGeographicZones() {
+    setCatchmentPopulationAutoCalc(false);
+    final int expectedListSize = geographicZones.size();
+
+    when(geographicZoneRepository.findAll())
+        .thenReturn(geographicZones);
+
+    List<GeographicZoneSimpleDto> result = geographicZoneService.findAllExportableItems();
+
+    assertEquals(expectedListSize, result.size());
+    verify(geographicZoneRepository).findAll();
+  }
+
+  @Test
+  public void shouldReturnCorrectTypeForExportableItems() {
+    when(geographicZoneRepository.findAll())
+        .thenReturn(geographicZones);
+
+    List<GeographicZoneSimpleDto> resultList = geographicZoneService.findAllExportableItems();
+    Class<?> resultType = geographicZoneService.getExportableType();
+
+    assertThat(resultList, Every.everyItem(instanceOf(resultType)));
+  }
+
+  @Test(expected = NotFoundException.class)
+  public void shouldThrowNotFoundExceptionWhenGeographicLevelNotFound() {
+    setCatchmentPopulationAutoCalc(true);
+    when(geographicLevelRepository.findFirstByOrderByLevelNumberDesc())
+        .thenReturn(Optional.empty());
+
+    geographicZoneService.findAllExportableItems();
+  }
+
+  private void setCatchmentPopulationAutoCalc(boolean value) {
+    ReflectionTestUtils.setField(geographicZoneService, "catchmentPopulationAutoCalc", value);
+  }
+
 }

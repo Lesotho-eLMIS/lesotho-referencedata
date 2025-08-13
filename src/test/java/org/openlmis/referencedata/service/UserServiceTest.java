@@ -40,10 +40,13 @@ import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.openlmis.referencedata.domain.CustomPageImpl;
 import org.openlmis.referencedata.domain.Facility;
 import org.openlmis.referencedata.domain.Right;
 import org.openlmis.referencedata.domain.RightType;
 import org.openlmis.referencedata.domain.User;
+import org.openlmis.referencedata.dto.UserContactDetailsDto;
+import org.openlmis.referencedata.dto.UserDto;
 import org.openlmis.referencedata.exception.ValidationMessageException;
 import org.openlmis.referencedata.repository.FacilityRepository;
 import org.openlmis.referencedata.repository.ProgramRepository;
@@ -57,7 +60,6 @@ import org.openlmis.referencedata.util.UserSearchParamsDataBuilder;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-
 
 @SuppressWarnings("PMD.TooManyMethods")
 public class UserServiceTest {
@@ -94,6 +96,12 @@ public class UserServiceTest {
 
   @Mock
   private Pageable pageable;
+
+  @Mock
+  private UserDetailsService userDetailsService;
+
+  @Mock
+  private UserAuthService userAuthService;
 
   @InjectMocks
   private UserService userService;
@@ -348,6 +356,47 @@ public class UserServiceTest {
       verify(supervisoryNodeRepository).existsById(SUPERVISORY_NODE_ID);
       verifyZeroInteractions(facilityRepository, userRepository);
     }
+  }
+
+  @Test
+  public void shouldFindAllExportableItems() {
+    UUID userId = UUID.randomUUID();
+    User user = new User();
+    user.setId(userId);
+    user.setUsername("john");
+
+    UserContactDetailsDto.UserContactDetailsApiContract.EmailDetails emailDetails =
+        new UserContactDetailsDto.UserContactDetailsApiContract.EmailDetails("john@pl.pl", true);
+    UserContactDetailsDto.UserContactDetailsApiContract contactDetails =
+        new UserContactDetailsDto.UserContactDetailsApiContract();
+    contactDetails.setReferenceDataUserId(userId);
+    contactDetails.setPhoneNumber("111222333");
+    contactDetails.setEmailDetails(emailDetails);
+
+    UserDto.UserAuthDetailsApiContract authDetails =
+        new UserDto.UserAuthDetailsApiContract();
+    authDetails.setId(userId);
+    authDetails.setUsername("john");
+    authDetails.setEnabled(true);
+
+    when(userRepository.findAll()).thenReturn(Collections.singletonList(user));
+    when(userDetailsService.getUserContactDetails())
+        .thenReturn(new CustomPageImpl<>(Collections.singletonList(contactDetails)));
+    when(userAuthService.getAuthUserDetails())
+        .thenReturn(Collections.singletonList(authDetails));
+    Facility facility = new Facility();
+    facility.setCode("WH01");
+    when(facilityRepository.findById(any())).thenReturn(Optional.of(facility));
+
+    List<UserDto> result = userService.findAllExportableItems();
+
+    assertEquals(1, result.size());
+    assertEquals("111222333", result.get(0).getPhoneNumber());
+  }
+
+  @Test
+  public void shouldReturnCorrectExportableType() {
+    assertEquals(UserDto.class, userService.getExportableType());
   }
 
   private User generateUser() {

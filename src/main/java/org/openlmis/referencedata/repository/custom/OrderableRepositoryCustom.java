@@ -30,16 +30,16 @@ public interface OrderableRepositoryCustom {
   ZonedDateTime findLatestModifiedDateByParams(SearchParams searchParams);
 
   interface SearchParams {
+    Set<String> getExactCodes();
 
     String getCode();
 
     String getName();
 
-    String getProgramCode();
+    Set<String> getProgramCodes();
 
     Set<Pair<UUID, Long>> getIdentityPairs();
 
     Set<UUID> getTradeItemId();
-
   }
 }

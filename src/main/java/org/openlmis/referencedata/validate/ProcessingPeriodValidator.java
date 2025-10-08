@@ -18,10 +18,14 @@ package org.openlmis.referencedata.validate;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+
+import org.openlmis.referencedata.domain.ExtraDataConverter;
 import org.openlmis.referencedata.domain.ProcessingPeriod;
 import org.openlmis.referencedata.repository.ProcessingPeriodRepository;
 import org.openlmis.referencedata.util.messagekeys.ProcessingPeriodMessageKeys;
 import org.openlmis.referencedata.util.messagekeys.ValidationMessageKeys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.validation.Errors;
 
@@ -30,6 +34,8 @@ public class ProcessingPeriodValidator implements BaseValidator {
   private static final String END_DATE = "endDate";
   private static final String PROCESSING_SCHEDULE = "processingSchedule";
   private static final String NAME = "name";
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(ExtraDataConverter.class);
 
   @Autowired
   private ProcessingPeriodRepository processingPeriodRepository;
@@ -66,10 +72,12 @@ public class ProcessingPeriodValidator implements BaseValidator {
       LocalDate startDate = period.getStartDate();
       LocalDate endDate = period.getEndDate();
 
-      if (endDate.isAfter(startDate)) {
+      if (endDate.isAfter(startDate) || endDate.isEqual(startDate)) {
         if (!periodList.isEmpty() && existingPeriod == null) {
           LocalDate lastEndDate = periodList.get(periodList.size() - 1).getEndDate();
           if (!startDate.equals(lastEndDate.plusDays(1))) {
+            LOGGER.error("There is a gap: Last period end date: "
+                + lastEndDate + ", new period start date: " + startDate);
             rejectValue(err, START_DATE,
                 ProcessingPeriodMessageKeys.ERROR_GAP_BETWEEN_LAST_END_DATE_AND_START_DATE);
           }

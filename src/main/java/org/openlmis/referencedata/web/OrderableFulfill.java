@@ -46,4 +46,9 @@ public final class OrderableFulfill {
     return new OrderableFulfill(canFulfillForMe, emptyList());
   }
 
+  public static OrderableFulfill of(List<UUID> canFulfillForMe,
+                                    List<UUID> canBeFulfilledByMe) {
+    return new OrderableFulfill(canFulfillForMe, canBeFulfilledByMe);
+  }
+
 }

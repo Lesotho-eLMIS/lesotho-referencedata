@@ -111,6 +111,14 @@ public interface OrderableRepository extends
               + " AND o.productCode IN :productCodes")
   List<Orderable> findAllLatestByProductCode(@Param("productCodes") Iterable<Code> productCodes);
 
+  @Query(value =
+          "SELECT DISTINCT o FROM Orderable o"
+              + " WHERE (o.identity.id, o.identity.versionNumber)"
+              + " IN (SELECT identity.id, MAX(identity.versionNumber)"
+              + " FROM Orderable GROUP BY identity.id)"
+              + " AND UPPER(o.productCode) LIKE UPPER(:pattern)")
+  List<Orderable> findAllLatestByProductCodeLike(@Param("pattern") String pattern);
+
   @Query(value = SELECT_ORDERABLE
           + FROM_ORDERABLES_CLAUSE
           + WHERE_LATEST_ORDERABLE

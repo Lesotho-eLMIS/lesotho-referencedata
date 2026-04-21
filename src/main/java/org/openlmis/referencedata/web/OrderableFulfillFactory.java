@@ -35,6 +35,7 @@ import org.slf4j.profiler.Profiler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+
 @Component
 public class OrderableFulfillFactory {
 
@@ -59,8 +60,12 @@ public class OrderableFulfillFactory {
       result = createForTradeItem(tradeItems, commodityTypes, tradeItemId, orderable, profiler);
     } else if (isNotBlank(commodityTypeId)) {
       result = createForCommodityType(tradeItems, commodityTypes, commodityTypeId, orderable,
-          profiler);
+              profiler);
     }
+
+    // Apply DON prefix matching — find donated equivalents
+    profiler.start("APPLY_DON_PREFIX_MATCHING");
+    result = applyDonPrefixMatching(orderable, result);
 
     profiler.stop().log();
     return result;
@@ -120,4 +125,54 @@ public class OrderableFulfillFactory {
     );
   }
 
+  /**
+   * Applies DON prefix matching to the OrderableFulfill result.
+   *
+   * <p>For a non-DON product (e.g. ABA003-TAB001-30), finds any donated equivalent
+   * (e.g. DON-ABA003-TAB001-30) and adds it to canFulfillForMe so NDSO can use
+   * donated stock to fulfill orders for the original product.
+   *
+   * <p>For a DON product, finds the original and adds it to canBeFulfilledByMe.
+   */
+  private OrderableFulfill applyDonPrefixMatching(Orderable orderable,
+                                                  OrderableFulfill existing) {
+    String productCode = orderable.getProductCode().toString();
+    boolean isDonProduct = productCode.toUpperCase().matches("^DON[^-]*-.*");
+
+    List<UUID> existingCanFulfillForMe = existing != null
+            ? Lists.newArrayList(existing.getCanFulfillForMe())
+            : Lists.newArrayList();
+    List<UUID> existingCanBeFulfilledByMe = existing != null
+            ? Lists.newArrayList(existing.getCanBeFulfilledByMe())
+            : Lists.newArrayList();
+
+    if (isDonProduct) {
+      // This is a DON product — find the original and add to canBeFulfilledByMe
+      // e.g. DON-ABA003-TAB001-30 → find ABA003-TAB001-30
+      String originalCode = productCode.replaceFirst("(?i)^DON[^-]*-", "");
+      List<Orderable> originals = orderableRepository
+              .findAllLatestByProductCodeLike(originalCode);
+      originals.forEach(o -> {
+        if (!existingCanBeFulfilledByMe.contains(o.getId())) {
+          existingCanBeFulfilledByMe.add(o.getId());
+        }
+      });
+    } else {
+      // This is an original product — find DON equivalents and add to canFulfillForMe
+      // e.g. ABA003-TAB001-30 → find DON%-ABA003-TAB001-30
+      List<Orderable> donEquivalents = orderableRepository
+              .findAllLatestByProductCodeLike("DON%-" + productCode);
+      donEquivalents.forEach(o -> {
+        if (!existingCanFulfillForMe.contains(o.getId())) {
+          existingCanFulfillForMe.add(o.getId());
+        }
+      });
+    }
+
+    if (existingCanFulfillForMe.isEmpty() && existingCanBeFulfilledByMe.isEmpty()) {
+      return existing;
+    }
+
+    return OrderableFulfill.of(existingCanFulfillForMe, existingCanBeFulfilledByMe);
+  }
 }
